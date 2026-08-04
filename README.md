@@ -117,7 +117,7 @@ pi-zh-pi-coding-agent/
 - 本工具未包含任何凭据或密钥。
 
 ---
-
+感谢Linux Do社区佬友https://linux.do/
 ## 📄 License
 
 [MIT](LICENSE)

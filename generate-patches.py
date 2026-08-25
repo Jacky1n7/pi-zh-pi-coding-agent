@@ -75,9 +75,10 @@ def main():
         # 容忍结尾换行差异(脚本写入时常带多余换行,不影响内容)
         if applied == l_text or applied.rstrip("\n") == l_text.rstrip("\n"):
             verified_ok += 1
-            all_patches[str(rel)] = pairs
+            # JSON 中始终使用 POSIX 分隔符，保证补丁可跨 Windows/macOS/Linux 使用。
+            all_patches[rel.as_posix()] = pairs
         else:
-            problems.append(str(rel))
+            problems.append(rel.as_posix())
 
     with open(args.output, "w", encoding="utf-8") as fh:
         json.dump(all_patches, fh, ensure_ascii=False, indent=1)

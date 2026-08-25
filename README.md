@@ -4,11 +4,13 @@
 
 > 界面汉化是对本机安装副本的本地补丁,不改动上游源码、不提交上游仓库。pi 升级后补丁会被覆盖,重跑一次本工具即可恢复中文。
 
+当前补丁集适配 **Pi 0.84.3**，覆盖 Windows、macOS 与 Linux。脚本可从 `PATH` 中的 `pi` 或 `npm root -g` 自动发现自定义 npm prefix。
+
 ---
 
 ## ✨ 功能
 
-汉化覆盖以下用户可见文本(25 个文件、240+ 条替换):
+汉化覆盖以下用户可见文本(25 个文件、247 条替换):
 
 | 区域 | 文件 |
 | --- | --- |
@@ -41,11 +43,11 @@
 
 ```bash
 # 1. 下载项目(或直接下载 pi-zh-apply.py + patches.json)
-git clone https://github.com/509992828/pi-zh-pi-coding-agent.git
+git clone https://github.com/Jacky1n7/pi-zh-pi-coding-agent.git
 cd pi-zh-pi-coding-agent
 
 # 2. 运行(自动探测 pi 安装位置)
-python pi-zh-apply.py
+python3 pi-zh-apply.py
 
 # 3. 完全退出并重启 pi,界面即变为中文
 ```
@@ -53,14 +55,24 @@ python pi-zh-apply.py
 ### 指定安装位置
 
 ```bash
+# macOS/Linux
+python3 pi-zh-apply.py --dist "$(npm root -g)/@earendil-works/pi-coding-agent/dist"
+
+# Windows
 python pi-zh-apply.py --dist "C:/Users/你的用户名/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/dist"
 ```
 
 ### 只检查状态(不修改)
 
 ```bash
-python pi-zh-apply.py --check
+python3 pi-zh-apply.py --check
 ```
+
+检查结果会分别列出已汉化、待处理、未匹配和缺失文件数量，并显示当前 Pi 版本与运行入口状态。
+
+### 新版 npm bundle 入口
+
+Pi 0.84.3 的 npm 命令默认从 `dist/bundle/cli.js` 启动，而汉化目标位于官方同时发布的可读模块中。脚本会把 bundle 入口切换到 `dist/cli.js`，使 CLI 与 TUI 使用已汉化模块；不会修改 npm 创建的 `pi` 软链接。
 
 ---
 
@@ -70,7 +82,7 @@ pi 更新(`npm update -g @earendil-works/pi-coding-agent` 等)会覆盖被汉化
 
 ```bash
 cd pi-zh-pi-coding-agent
-python pi-zh-apply.py
+python3 pi-zh-apply.py
 ```
 
 脚本幂等:已汉化的文件自动跳过,只需恢复的文件才会被重新打补丁。
@@ -83,7 +95,7 @@ python pi-zh-apply.py
 
 ```bash
 # 需要: 英文原版 dist(如新版本) 与 已汉化 dist
-python generate-patches.py \
+python3 generate-patches.py \
   --pristine <英文原版dist目录> \
   --localized <已汉化dist目录> \
   -o patches.json
@@ -93,6 +105,14 @@ python generate-patches.py \
 
 **对新版 pi**:先在新版本上手动汉化需要的内容(或复用本项目的替换思路),再运行生成器更新 `patches.json`。
 
+生成器统一写入 `/` 路径分隔符，产物可在 Windows、macOS 和 Linux 之间复用。
+
+### 运行测试
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 ---
 
 ## 📁 项目结构
@@ -100,9 +120,10 @@ python generate-patches.py \
 ```
 pi-zh-pi-coding-agent/
 ├── pi-zh-apply.py         # 主脚本:应用补丁 / 升级后恢复 / 状态检查
-├── patches.json           # 240+ 条替换对(自动校验过)
+├── patches.json           # Pi 0.84.3 的 247 条替换对(自动校验过)
 ├── generate-patches.py    # 补丁生成器(开发用)
 ├── pi-commands-cn.md      # 交互命令中文参考表
+├── tests/                 # 路径、幂等与 bundle 入口测试
 ├── archive/               # 历史补丁脚本(早期版本,仅存档)
 └── README.md
 ```
@@ -112,6 +133,7 @@ pi-zh-pi-coding-agent/
 ## ⚠️ 注意事项
 
 - 补丁只修改**本机安装副本**,不影响其他机器或上游仓库。
+- 工具不会自动创建备份；重新安装或更新 Pi 可恢复官方文件。
 - 上游升级后需重新运行本工具(见上)。
 - 新版本若改动了源字符串,部分替换可能失效(`~ 部分未匹配` 提示),重新生成 `patches.json` 即可。
 - 本工具未包含任何凭据或密钥。

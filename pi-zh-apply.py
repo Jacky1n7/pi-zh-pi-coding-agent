@@ -13,14 +13,17 @@
 """
 import argparse
 import json
-import os
-import re
+import shutil
+import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PurePosixPath
 
 HERE = Path(__file__).resolve().parent
 PATCHES_FILE = HERE / "patches.json"
-CJK = re.compile(r"[\u4e00-\u9fff]")
+PATCHSET_PI_VERSION = "0.84.3"
+BUNDLE_PROXY = '#!/usr/bin/env node\nimport "../cli.js";\n'
 
 CANDIDATE_DISTS = [
     # 常见安装位置(Windows 优先,按可能性排序)
@@ -33,68 +36,165 @@ CANDIDATE_DISTS = [
 ]
 
 
-def find_dist(explicit: str | None) -> Path | None:
-    if explicit:
-        p = Path(explicit)
-        return p if (p / "core").is_dir() and (p / "modes").is_dir() else None
-    for cand in CANDIDATE_DISTS:
-        p = Path(cand)
-        if (p / "core").is_dir() and (p / "modes").is_dir():
-            return p
-    # 兜底:扫描 pi 可执行文件所在位置
+def is_dist(path: Path) -> bool:
+    return (path / "core").is_dir() and (path / "modes").is_dir() and (path / "cli.js").is_file()
+
+
+def npm_global_dist() -> Path | None:
+    """通过当前 npm 配置发现自定义 prefix 下的全局安装目录。"""
+    try:
+        result = subprocess.run(
+            ["npm", "root", "-g"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    root = result.stdout.strip()
+    if not root:
+        return None
+    return Path(root) / "@earendil-works" / "pi-coding-agent" / "dist"
+
+
+def dist_from_pi_executable() -> Path | None:
+    """从 PATH 中 pi 的真实入口反向定位 dist，兼容 npm 自定义 prefix。"""
+    executable = shutil.which("pi")
+    if not executable:
+        return None
+    resolved = Path(executable).resolve()
+    for parent in (resolved.parent, *resolved.parents):
+        if parent.name == "dist" and is_dist(parent):
+            return parent
     return None
 
 
-def check_status(dist: Path, patches: dict) -> tuple[int, int]:
-    """返回 (已汉化文件数, 待汉化文件数)"""
-    done = todo = 0
+def find_dist(explicit: str | None) -> Path | None:
+    if explicit:
+        p = Path(explicit).expanduser().resolve()
+        return p if is_dist(p) else None
+
+    candidates = [
+        dist_from_pi_executable(),
+        npm_global_dist(),
+        *(Path(cand) for cand in CANDIDATE_DISTS),
+    ]
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        p = candidate.expanduser().resolve()
+        if p in seen:
+            continue
+        seen.add(p)
+        if is_dist(p):
+            return p
+    return None
+
+
+def target_path(dist: Path, rel: str) -> Path:
+    """将补丁路径统一为平台无关路径，并拒绝跳出 dist 的路径。"""
+    portable = PurePosixPath(rel.replace("\\", "/"))
+    if portable.is_absolute() or ".." in portable.parts:
+        raise ValueError(f"非法补丁路径: {rel}")
+    return dist.joinpath(*portable.parts)
+
+
+@dataclass
+class PatchStats:
+    applied: int = 0
+    localized: int = 0
+    unmatched: int = 0
+    missing_files: int = 0
+    changed_files: int = 0
+
+
+def check_status(dist: Path, patches: dict) -> PatchStats:
+    """逐条检查补丁，正确识别未处理、已处理和版本不匹配。"""
+    stats = PatchStats()
     for rel, pairs in patches.items():
-        target = dist / rel
+        target = target_path(dist, rel)
         if not target.exists():
+            stats.missing_files += 1
             continue
         text = target.read_text(encoding="utf-8")
-        # 检查每个文件第一组替换是否已生效
-        old, new = pairs[0]
-        if old in text:
-            todo += 1
-        else:
-            done += 1
-    return done, todo
+        for old, new in pairs:
+            if old in text:
+                stats.applied += 1  # check 模式下表示待应用
+            elif new in text:
+                stats.localized += 1
+            else:
+                stats.unmatched += 1
+    return stats
 
 
-def apply(dist: Path, patches: dict) -> tuple[int, int, int]:
-    """应用全部补丁,返回 (文件数, 替换条数, 失败条数)"""
-    files_ok = pairs_ok = pairs_fail = 0
-    skipped = 0
+def apply(dist: Path, patches: dict) -> PatchStats:
+    """逐条应用补丁；支持幂等运行，也能继续处理部分汉化文件。"""
+    stats = PatchStats()
     for rel, pairs in patches.items():
-        target = dist / rel
+        target = target_path(dist, rel)
         if not target.exists():
             print(f"  ✗ 缺失: {rel}")
+            stats.missing_files += 1
             continue
         text = target.read_text(encoding="utf-8")
-        if CJK.search(text):
-            skipped += 1
-            print(f"  = {rel} (已汉化,跳过)")
-            continue
         changed = False
-        file_ok = True
         for old, new in pairs:
             if old in text:
                 text = text.replace(old, new)
-                pairs_ok += 1
+                stats.applied += 1
                 changed = True
+            elif new in text:
+                stats.localized += 1
             else:
-                pairs_fail += 1
-                file_ok = False
+                stats.unmatched += 1
         if changed:
             target.write_text(text, encoding="utf-8")
-            files_ok += 1
+            stats.changed_files += 1
             print(f"  ✓ {rel}")
-        elif file_ok:
-            print(f"  ✓ {rel} (新补丁)")
+        elif all(new in text for _, new in pairs):
+            print(f"  = {rel} (已汉化)")
         else:
             print(f"  ~ {rel} (部分未匹配,可能版本已变化)")
-    return files_ok, pairs_ok, pairs_fail, skipped
+    return stats
+
+
+def package_version(dist: Path) -> str | None:
+    package_json = dist.parent / "package.json"
+    try:
+        return json.loads(package_json.read_text(encoding="utf-8")).get("version")
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def uses_bundled_entry(dist: Path) -> bool:
+    package_json = dist.parent / "package.json"
+    try:
+        package = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return package.get("bin", {}).get("pi") == "dist/bundle/cli.js"
+
+
+def bundle_entry_status(dist: Path) -> str:
+    """新版 npm 包从 bundle 启动；入口需转到已汉化的未打包模块。"""
+    if not uses_bundled_entry(dist):
+        return "无需切换"
+    entry = dist / "bundle" / "cli.js"
+    if not entry.is_file():
+        return "入口缺失"
+    return "已切换" if entry.read_text(encoding="utf-8") == BUNDLE_PROXY else "待切换"
+
+
+def redirect_bundle_entry(dist: Path) -> bool:
+    if not uses_bundled_entry(dist):
+        return False
+    entry = dist / "bundle" / "cli.js"
+    if not entry.is_file() or entry.read_text(encoding="utf-8") == BUNDLE_PROXY:
+        return False
+    entry.write_text(BUNDLE_PROXY, encoding="utf-8")
+    return True
 
 
 def main():
@@ -113,15 +213,31 @@ def main():
         print("✗ 未找到 pi-coding-agent 安装目录,请用 --dist 指定")
         return 1
     print(f"目标: {dist}")
+    version = package_version(dist)
+    if version:
+        print(f"Pi 版本: {version} (补丁集: {PATCHSET_PI_VERSION})")
+        if version != PATCHSET_PI_VERSION:
+            print("⚠ 当前 Pi 版本与补丁集版本不同，可能出现未匹配条目")
 
-    done, todo = check_status(dist, patches)
-    print(f"状态: {done} 个文件已汉化, {todo} 个文件待处理")
+    status = check_status(dist, patches)
+    print(
+        f"状态: {status.localized} 条已汉化, {status.applied} 条待处理, "
+        f"{status.unmatched} 条未匹配, {status.missing_files} 个文件缺失"
+    )
+    print(f"运行入口: {bundle_entry_status(dist)}")
 
     if args.check:
         return 0
 
-    files_ok, pairs_ok, pairs_fail, skipped = apply(dist, patches)
-    print(f"\n完成: 应用 {files_ok} 个文件, {pairs_ok} 条替换生效, {pairs_fail} 条未匹配, 跳过已汉化 {skipped} 个文件")
+    result = apply(dist, patches)
+    entry_changed = redirect_bundle_entry(dist)
+    print(
+        f"\n完成: 修改 {result.changed_files} 个文件, {result.applied} 条替换生效, "
+        f"{result.localized} 条原已汉化, {result.unmatched} 条未匹配, "
+        f"{result.missing_files} 个文件缺失"
+    )
+    if entry_changed:
+        print("  ✓ bundle/cli.js (已切换到汉化后的未打包入口)")
     print("提示: 完全退出并重启 pi 后生效;升级后重跑本脚本即可恢复汉化。")
     return 0
 

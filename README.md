@@ -10,7 +10,7 @@
 
 ## ✨ 功能
 
-汉化覆盖以下用户可见文本(25 个文件、247 条替换):
+汉化覆盖主程序 25 个文件、247 条替换，并包含 `@earendil-works/pi-tui` 依赖的通用设置界面汉化：
 
 | 区域 | 文件 |
 | --- | --- |
@@ -36,6 +36,7 @@
 | 消息分叉选择器 | `modes/interactive/components/user-message-selector.js` |
 | CLI 帮助 `pi --help` | `cli/args.js` |
 | llama.cpp 模型管理 | `core/slash-commands.js`、`extensions/llama/index.js` |
+| 设置列表通用提示 | `@earendil-works/pi-tui/dist/components/settings-list.js` |
 
 ---
 
@@ -69,6 +70,7 @@ python3 pi-zh-apply.py --check
 ```
 
 检查结果会分别列出已汉化、待处理、未匹配和缺失文件数量，并显示当前 Pi 版本与运行入口状态。
+依赖补丁会单独显示包名、实际版本、补丁集版本和匹配统计。
 
 ### 新版 npm bundle 入口
 
@@ -89,7 +91,11 @@ python3 pi-zh-apply.py
 
 ---
 
-## 🛠 如何重新生成补丁(进阶)
+## 🛠 如何手工维护新版本
+
+完整流程见 [`docs/maintenance.md`](docs/maintenance.md)，包括：建立英文原版/手工汉化双副本、复用旧翻译、维护 `pi-tui` 依赖、重新生成补丁以及真实 TUI 验收。
+
+### 重新生成主程序补丁
 
 补丁数据 `patches.json` 由 `generate-patches.py` 从「英文原版 + 已汉化版本」自动提取生成:
 
@@ -121,8 +127,10 @@ python3 -m unittest discover -s tests -v
 pi-zh-pi-coding-agent/
 ├── pi-zh-apply.py         # 主脚本:应用补丁 / 升级后恢复 / 状态检查
 ├── patches.json           # Pi 0.84.3 的 247 条替换对(自动校验过)
+├── dependency-patches.json # pi-tui 等依赖的独立补丁集
 ├── generate-patches.py    # 补丁生成器(开发用)
 ├── pi-commands-cn.md      # 交互命令中文参考表
+├── docs/maintenance.md    # 新版本手工汉化与验证流程
 ├── tests/                 # 路径、幂等与 bundle 入口测试
 ├── archive/               # 历史补丁脚本(早期版本,仅存档)
 └── README.md

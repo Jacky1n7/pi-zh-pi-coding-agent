@@ -49,7 +49,12 @@ def main():
     ap.add_argument("--pristine", required=True)
     ap.add_argument("--localized", required=True)
     ap.add_argument("-o", "--output", default="patches.json")
+    ap.add_argument("--package", help="生成依赖补丁时指定包名，如 @earendil-works/pi-tui")
+    ap.add_argument("--version", help="依赖补丁对应的包版本；与 --package 一起使用")
     args = ap.parse_args()
+
+    if bool(args.package) != bool(args.version):
+        ap.error("--package 与 --version 必须一起使用")
 
     pristine_root = Path(args.pristine)
     localized_root = Path(args.localized)
@@ -80,8 +85,18 @@ def main():
         else:
             problems.append(rel.as_posix())
 
+    output = all_patches
+    if args.package:
+        output = {
+            args.package: {
+                "version": args.version,
+                "root": "dist",
+                "files": all_patches,
+            }
+        }
+
     with open(args.output, "w", encoding="utf-8") as fh:
-        json.dump(all_patches, fh, ensure_ascii=False, indent=1)
+        json.dump(output, fh, ensure_ascii=False, indent=1)
 
     total = sum(len(v) for v in all_patches.values())
     print(f"[OK] 完整校验通过文件: {verified_ok}")

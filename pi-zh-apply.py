@@ -22,6 +22,7 @@ from pathlib import PurePosixPath
 
 HERE = Path(__file__).resolve().parent
 PATCHES_FILE = HERE / "patches.json"
+DEPENDENCY_PATCHES_FILE = HERE / "dependency-patches.json"
 PATCHSET_PI_VERSION = "0.84.3"
 BUNDLE_PROXY = '#!/usr/bin/env node\nimport "../cli.js";\n'
 
@@ -109,6 +110,13 @@ class PatchStats:
     missing_files: int = 0
     changed_files: int = 0
 
+    def add(self, other: "PatchStats") -> None:
+        self.applied += other.applied
+        self.localized += other.localized
+        self.unmatched += other.unmatched
+        self.missing_files += other.missing_files
+        self.changed_files += other.changed_files
+
 
 def check_status(dist: Path, patches: dict) -> PatchStats:
     """逐条检查补丁，正确识别未处理、已处理和版本不匹配。"""
@@ -168,6 +176,65 @@ def package_version(dist: Path) -> str | None:
         return None
 
 
+def dependency_dist(dist: Path, package_name: str, relative_root: str = "dist") -> Path:
+    """解析 coding-agent 内安装的依赖目录，不允许路径逃逸。"""
+    package_parts = package_name.split("/")
+    if (
+        len(package_parts) != 2
+        or not package_parts[0].startswith("@")
+        or not package_parts[0][1:]
+        or not package_parts[1]
+        or any(part in {".", ".."} for part in package_parts)
+    ):
+        raise ValueError(f"非法依赖包名: {package_name}")
+    package_root = dist.parent / "node_modules" / package_parts[0] / package_parts[1]
+    return target_path(package_root, relative_root)
+
+
+def dependency_version(root: Path, relative_root: str) -> str | None:
+    package_root = root
+    for _ in PurePosixPath(relative_root.replace("\\", "/")).parts:
+        package_root = package_root.parent
+    try:
+        return json.loads((package_root / "package.json").read_text(encoding="utf-8")).get("version")
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_dependency_patchsets() -> dict:
+    if not DEPENDENCY_PATCHES_FILE.exists():
+        return {}
+    return json.loads(DEPENDENCY_PATCHES_FILE.read_text(encoding="utf-8"))
+
+
+def check_dependencies(dist: Path, patchsets: dict) -> PatchStats:
+    total = PatchStats()
+    for package_name, config in patchsets.items():
+        relative_root = config.get("root", "dist")
+        root = dependency_dist(dist, package_name, relative_root)
+        expected = config.get("version")
+        actual = dependency_version(root, relative_root)
+        status = check_status(root, config.get("files", {}))
+        total.add(status)
+        version_text = actual or "未知"
+        print(
+            f"依赖 {package_name}: {version_text} (补丁集: {expected or '未指定'}) · "
+            f"{status.localized} 条已汉化, {status.applied} 条待处理, "
+            f"{status.unmatched} 条未匹配, {status.missing_files} 个文件缺失"
+        )
+    return total
+
+
+def apply_dependencies(dist: Path, patchsets: dict) -> PatchStats:
+    total = PatchStats()
+    for package_name, config in patchsets.items():
+        root = dependency_dist(dist, package_name, config.get("root", "dist"))
+        print(f"依赖 {package_name}:")
+        status = apply(root, config.get("files", {}))
+        total.add(status)
+    return total
+
+
 def uses_bundled_entry(dist: Path) -> bool:
     package_json = dist.parent / "package.json"
     try:
@@ -201,12 +268,18 @@ def main():
     ap = argparse.ArgumentParser(description="Pi 中文汉化 / 升级后恢复")
     ap.add_argument("--dist", help="pi-coding-agent 的 dist 目录(默认自动探测)")
     ap.add_argument("--check", action="store_true", help="只检查状态,不修改")
+    ap.add_argument("--no-dependencies", action="store_true", help="跳过 pi-tui 等依赖补丁")
     args = ap.parse_args()
 
     if not PATCHES_FILE.exists():
         print(f"✗ 找不到 {PATCHES_FILE},请确认与脚本同目录")
         return 1
     patches = json.loads(PATCHES_FILE.read_text(encoding="utf-8"))
+    try:
+        dependency_patchsets = load_dependency_patchsets()
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"✗ 无法读取 {DEPENDENCY_PATCHES_FILE}: {error}")
+        return 1
 
     dist = find_dist(args.dist)
     if not dist:
@@ -224,13 +297,19 @@ def main():
         f"状态: {status.localized} 条已汉化, {status.applied} 条待处理, "
         f"{status.unmatched} 条未匹配, {status.missing_files} 个文件缺失"
     )
+    if not args.no_dependencies:
+        check_dependencies(dist, dependency_patchsets)
     print(f"运行入口: {bundle_entry_status(dist)}")
 
     if args.check:
         return 0
 
     result = apply(dist, patches)
+    dependency_result = PatchStats()
+    if not args.no_dependencies:
+        dependency_result = apply_dependencies(dist, dependency_patchsets)
     entry_changed = redirect_bundle_entry(dist)
+    result.add(dependency_result)
     print(
         f"\n完成: 修改 {result.changed_files} 个文件, {result.applied} 条替换生效, "
         f"{result.localized} 条原已汉化, {result.unmatched} 条未匹配, "

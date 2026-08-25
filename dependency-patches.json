@@ -1,0 +1,22 @@
+{
+ "@earendil-works/pi-tui": {
+  "version": "0.84.3",
+  "root": "dist",
+  "files": {
+   "components/settings-list.js": [
+    [
+     "            ? \"  Type to search · Enter/Space to change · Esc to cancel\"\n            : \"  Enter/Space to change · Esc to cancel\"), width));\n",
+     "            ? \"  输入以搜索 · Enter/Space 更改 · Esc 取消\"\n            : \"  Enter/Space 更改 · Esc 取消\"), width));\n"
+    ],
+    [
+     "            lines.push(truncateToWidth(this.theme.hint(\"  No matching settings\"), width));\n",
+     "            lines.push(truncateToWidth(this.theme.hint(\"  没有匹配的设置\"), width));\n"
+    ],
+    [
+     "            lines.push(this.theme.hint(\"  No settings available\"));\n",
+     "            lines.push(this.theme.hint(\"  没有可用设置\"));\n"
+    ]
+   ]
+  }
+ }
+}

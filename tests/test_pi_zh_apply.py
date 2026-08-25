@@ -28,6 +28,12 @@ class PiZhApplyTests(unittest.TestCase):
             json.dumps({"version": "0.84.3", "bin": {"pi": "dist/bundle/cli.js"}}),
             encoding="utf-8",
         )
+        self.tui_root = self.package_root / "node_modules" / "@earendil-works" / "pi-tui"
+        (self.tui_root / "dist" / "components").mkdir(parents=True)
+        (self.tui_root / "package.json").write_text(json.dumps({"version": "0.84.3"}), encoding="utf-8")
+        (self.tui_root / "dist" / "components" / "settings-list.js").write_text(
+            'const hint = "Type to search";\n', encoding="utf-8"
+        )
         self.patches = {"cli\\args.js": [["Hello", "你好"], ["World", "世界"]]}
 
     def tearDown(self):
@@ -64,6 +70,31 @@ class PiZhApplyTests(unittest.TestCase):
     def test_patch_path_cannot_escape_dist(self):
         with self.assertRaises(ValueError):
             pi_zh_apply.target_path(self.dist, "../outside.js")
+
+    def test_dependency_patchset_is_resolved_and_applied(self):
+        patchsets = {
+            "@earendil-works/pi-tui": {
+                "version": "0.84.3",
+                "root": "dist",
+                "files": {"components/settings-list.js": [["Type to search", "输入以搜索"]]},
+            }
+        }
+        root = pi_zh_apply.dependency_dist(self.dist, "@earendil-works/pi-tui")
+        self.assertEqual(root, self.tui_root / "dist")
+        self.assertEqual(pi_zh_apply.dependency_version(root, "dist"), "0.84.3")
+
+        before = pi_zh_apply.check_dependencies(self.dist, patchsets)
+        self.assertEqual((before.applied, before.unmatched), (1, 0))
+        result = pi_zh_apply.apply_dependencies(self.dist, patchsets)
+        self.assertEqual((result.applied, result.unmatched), (1, 0))
+        self.assertIn(
+            "输入以搜索",
+            (root / "components" / "settings-list.js").read_text(encoding="utf-8"),
+        )
+
+    def test_invalid_dependency_name_is_rejected(self):
+        with self.assertRaises(ValueError):
+            pi_zh_apply.dependency_dist(self.dist, "../pi-tui")
 
 
 if __name__ == "__main__":

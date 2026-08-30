@@ -23,7 +23,7 @@ from pathlib import PurePosixPath
 HERE = Path(__file__).resolve().parent
 PATCHES_FILE = HERE / "patches.json"
 DEPENDENCY_PATCHES_FILE = HERE / "dependency-patches.json"
-PATCHSET_PI_VERSION = "0.84.3"
+PATCHSET_PI_VERSION = "0.84.4"
 BUNDLE_PROXY = '#!/usr/bin/env node\nimport "../cli.js";\n'
 
 CANDIDATE_DISTS = [
@@ -204,7 +204,10 @@ def dependency_version(root: Path, relative_root: str) -> str | None:
 def load_dependency_patchsets() -> dict:
     if not DEPENDENCY_PATCHES_FILE.exists():
         return {}
-    return json.loads(DEPENDENCY_PATCHES_FILE.read_text(encoding="utf-8"))
+    try:
+        return json.loads(DEPENDENCY_PATCHES_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"无法读取依赖补丁集: {error}") from error
 
 
 def check_dependencies(dist: Path, patchsets: dict) -> PatchStats:
@@ -274,10 +277,14 @@ def main():
     if not PATCHES_FILE.exists():
         print(f"✗ 找不到 {PATCHES_FILE},请确认与脚本同目录")
         return 1
-    patches = json.loads(PATCHES_FILE.read_text(encoding="utf-8"))
+    try:
+        patches = json.loads(PATCHES_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"✗ 无法读取 {PATCHES_FILE}: {error}")
+        return 1
     try:
         dependency_patchsets = load_dependency_patchsets()
-    except (OSError, json.JSONDecodeError) as error:
+    except ValueError as error:
         print(f"✗ 无法读取 {DEPENDENCY_PATCHES_FILE}: {error}")
         return 1
 

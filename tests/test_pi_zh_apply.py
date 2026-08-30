@@ -25,12 +25,12 @@ class PiZhApplyTests(unittest.TestCase):
         (self.dist / "cli" / "args.js").write_text("你好 World\n", encoding="utf-8")
         (self.dist / "bundle" / "cli.js").write_text("// bundled entry\n", encoding="utf-8")
         (self.package_root / "package.json").write_text(
-            json.dumps({"version": "0.84.3", "bin": {"pi": "dist/bundle/cli.js"}}),
+            json.dumps({"version": "0.84.4", "bin": {"pi": "dist/bundle/cli.js"}}),
             encoding="utf-8",
         )
         self.tui_root = self.package_root / "node_modules" / "@earendil-works" / "pi-tui"
         (self.tui_root / "dist" / "components").mkdir(parents=True)
-        (self.tui_root / "package.json").write_text(json.dumps({"version": "0.84.3"}), encoding="utf-8")
+        (self.tui_root / "package.json").write_text(json.dumps({"version": "0.84.4"}), encoding="utf-8")
         (self.tui_root / "dist" / "components" / "settings-list.js").write_text(
             'const hint = "Type to search";\n', encoding="utf-8"
         )
@@ -74,14 +74,14 @@ class PiZhApplyTests(unittest.TestCase):
     def test_dependency_patchset_is_resolved_and_applied(self):
         patchsets = {
             "@earendil-works/pi-tui": {
-                "version": "0.84.3",
+                "version": "0.84.4",
                 "root": "dist",
                 "files": {"components/settings-list.js": [["Type to search", "输入以搜索"]]},
             }
         }
         root = pi_zh_apply.dependency_dist(self.dist, "@earendil-works/pi-tui")
         self.assertEqual(root, self.tui_root / "dist")
-        self.assertEqual(pi_zh_apply.dependency_version(root, "dist"), "0.84.3")
+        self.assertEqual(pi_zh_apply.dependency_version(root, "dist"), "0.84.4")
 
         before = pi_zh_apply.check_dependencies(self.dist, patchsets)
         self.assertEqual((before.applied, before.unmatched), (1, 0))

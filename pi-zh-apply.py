@@ -23,7 +23,7 @@ from pathlib import PurePosixPath
 HERE = Path(__file__).resolve().parent
 PATCHES_FILE = HERE / "patches.json"
 DEPENDENCY_PATCHES_FILE = HERE / "dependency-patches.json"
-PATCHSET_PI_VERSION = "0.84.4"
+PATCHSET_PI_VERSION = "0.87.1"
 BUNDLE_PROXY = '#!/usr/bin/env node\nimport "../cli.js";\n'
 
 CANDIDATE_DISTS = [

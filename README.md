@@ -4,7 +4,7 @@
 
 > 界面汉化是对本机安装副本的本地补丁,不改动上游源码、不提交上游仓库。pi 升级后补丁会被覆盖,重跑一次本工具即可恢复中文。
 
-当前补丁集适配 **Pi 0.84.4**，覆盖 Windows、macOS 与 Linux。脚本可从 `PATH` 中的 `pi` 或 `npm root -g` 自动发现自定义 npm prefix。
+当前补丁集适配 **Pi 0.87.1**，覆盖 Windows、macOS 与 Linux。脚本可从 `PATH` 中的 `pi` 或 `npm root -g` 自动发现自定义 npm prefix。
 
 ---
 
@@ -74,7 +74,7 @@ python3 pi-zh-apply.py --check
 
 ### 新版 npm bundle 入口
 
-Pi 0.84.4 的 npm 命令默认从 `dist/bundle/cli.js` 启动，而汉化目标位于官方同时发布的可读模块中。脚本会把 bundle 入口切换到 `dist/cli.js`，使 CLI 与 TUI 使用已汉化模块；不会修改 npm 创建的 `pi` 软链接。
+Pi 0.84 及以上的 npm 包默认从 `dist/bundle/cli.js` 启动，而汉化目标位于官方同时发布的可读模块中。脚本会把 bundle 入口切换到 `dist/cli.js`，使 CLI 与 TUI 使用已汉化模块；不会修改 npm 创建的 `pi` 软链接。
 
 ---
 
@@ -123,10 +123,10 @@ python3 -m unittest discover -s tests -v
 
 ## 📁 项目结构
 
-```
+```text
 pi-zh-pi-coding-agent/
 ├── pi-zh-apply.py         # 主脚本:应用补丁 / 升级后恢复 / 状态检查
-├── patches.json           # Pi 0.84.4 的 247 条替换对(自动校验过)
+├── patches.json           # Pi 0.87.1 的 247 条替换对(自动校验过)
 ├── dependency-patches.json # pi-tui 等依赖的独立补丁集
 ├── generate-patches.py    # 补丁生成器(开发用)
 ├── pi-commands-cn.md      # 交互命令中文参考表
